@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    LOGBACK CONFIGURATION — logback-spring.xml
+
+    Spring Boot uses logback-spring.xml (NOT logback.xml) so that
+    Spring's profile-based <springProfile> tags work correctly.
+
+    LOGGING STRATEGY:
+      - Development: Human-readable colored console output
+      - Production:  JSON-formatted logs to stdout (for ELK/Splunk/CloudWatch)
+
+    LOG LEVELS (least to most verbose):
+      ERROR → WARN → INFO → DEBUG → TRACE
+
+    PRODUCTION STANDARDS:
+      - Never log passwords, tokens, PII, or credit card numbers.
+      - Use MDC (Mapped Diagnostic Context) for correlation IDs.
+      - Log at INFO for service boundaries; DEBUG only for troubleshooting.
+      - Structured JSON logs are machine-parseable by log aggregators.
+-->
+<configuration>
+
+    <!-- Colored console pattern — for local development readability -->
+    <property name="CONSOLE_PATTERN"
+              value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"/>
+
+    <!-- ============================================================
+         DEVELOPMENT PROFILE — colorized console output
+    ============================================================ -->
+    <springProfile name="dev,default">
+        <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <pattern>${CONSOLE_PATTERN}</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+
+        <!-- Application code at DEBUG in dev -->
+        <logger name="com.production.app" level="DEBUG"/>
+
+        <!-- Hibernate SQL logging (enable in dev for query inspection) -->
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+    </springProfile>
+
+    <!-- ============================================================
+         PRODUCTION PROFILE — structured output for log aggregators.
+         JSON format enables easy parsing in ELK (Elasticsearch,
+         Logstash, Kibana) or AWS CloudWatch Logs Insights.
+    ============================================================ -->
+    <springProfile name="prod">
+        <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+                <!-- Simple pattern for prod — shipped to ELK for enrichment -->
+                <pattern>{"timestamp":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}","level":"%p","thread":"%t","logger":"%logger","message":"%replace(%m){'\"','\\\"'}","exception":"%replace(%xThrowable{full}){'\"','\\\"'}"}%n</pattern>
+                <charset>UTF-8</charset>
+            </encoder>
+        </appender>
+
+        <!-- Async appender: logging never blocks the request thread -->
+        <appender name="ASYNC_STDOUT" class="ch.qos.logback.classic.AsyncAppender">
+            <appender-ref ref="STDOUT"/>
+            <queueSize>500</queueSize>
+            <discardingThreshold>0</discardingThreshold>
+        </appender>
+
+        <root level="WARN">
+            <appender-ref ref="ASYNC_STDOUT"/>
+        </root>
+
+        <logger name="com.production.app" level="INFO"/>
+    </springProfile>
+
+</configuration>
