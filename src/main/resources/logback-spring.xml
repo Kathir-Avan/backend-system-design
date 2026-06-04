@@ -5,30 +5,35 @@
     Spring Boot uses logback-spring.xml (NOT logback.xml) so that
     Spring's profile-based <springProfile> tags work correctly.
 
+    WHY EXPLICIT CONVERTER DECLARATIONS?
+      %clr and %wEx are Spring Boot custom Logback converters.
+      When you provide your own logback-spring.xml, they must be
+      registered manually via <conversionRule> before use.
+
     LOGGING STRATEGY:
-      - Development: Human-readable colored console output
-      - Production:  JSON-formatted logs to stdout (for ELK/Splunk/CloudWatch)
+      - Development : Human-readable colored console output
+      - Production  : JSON-formatted logs to stdout (ELK/Splunk/CloudWatch)
 
     LOG LEVELS (least to most verbose):
-      ERROR → WARN → INFO → DEBUG → TRACE
-
-    PRODUCTION STANDARDS:
-      - Never log passwords, tokens, PII, or credit card numbers.
-      - Use MDC (Mapped Diagnostic Context) for correlation IDs.
-      - Log at INFO for service boundaries; DEBUG only for troubleshooting.
-      - Structured JSON logs are machine-parseable by log aggregators.
+      ERROR, WARN, INFO, DEBUG, TRACE
 -->
 <configuration>
-	<conversionRule conversionWord="clr"
-                converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
-	<conversionRule conversionWord="wEx"
-                converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
-    <!-- Colored console pattern — for local development readability -->
+
+    <!-- ============================================================
+         REGISTER SPRING BOOT CUSTOM CONVERTERS
+         Must appear before any <property> or <pattern> that uses them.
+    ============================================================ -->
+    <conversionRule conversionWord="clr"
+                    converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wEx"
+                    converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+
+    <!-- Colored console pattern for local development -->
     <property name="CONSOLE_PATTERN"
               value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx"/>
 
     <!-- ============================================================
-         DEVELOPMENT PROFILE — colorized console output
+         DEVELOPMENT PROFILE - colorized console output
     ============================================================ -->
     <springProfile name="dev,default">
         <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
@@ -45,25 +50,26 @@
         <!-- Application code at DEBUG in dev -->
         <logger name="com.production.app" level="DEBUG"/>
 
-        <!-- Hibernate SQL logging (enable in dev for query inspection) -->
+        <!-- Hibernate SQL logging -->
         <logger name="org.hibernate.SQL" level="DEBUG"/>
     </springProfile>
 
     <!-- ============================================================
-         PRODUCTION PROFILE — structured output for log aggregators.
-         JSON format enables easy parsing in ELK (Elasticsearch,
-         Logstash, Kibana) or AWS CloudWatch Logs Insights.
+         PRODUCTION PROFILE - structured JSON output for log aggregators.
+         Uses %xThrowable (native Logback) for exception formatting.
+         Single quotes in the JSON pattern use &apos; to stay XML-valid.
     ============================================================ -->
     <springProfile name="prod">
         <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
             <encoder>
-                <!-- Simple pattern for prod — shipped to ELK for enrichment -->
-                <pattern>{"timestamp":"%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}","level":"%p","thread":"%t","logger":"%logger","message":"%replace(%m){'\"','\\\"'}","exception":"%replace(%xThrowable{full}){'\"','\\\"'}"}%n</pattern>
+                <pattern>{"timestamp":"%d{yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSZ}","level":"%p","thread":"%t","logger":"%logger","message":"%replace(%m){&apos;"&apos;,&apos;\\&apos;}","exception":"%replace(%xThrowable{full}){&apos;"&apos;,&apos;\\&apos;}"}%n</pattern>
                 <charset>UTF-8</charset>
             </encoder>
         </appender>
 
-        <!-- Async appender: logging never blocks the request thread -->
+        <!-- Async appender: logging never blocks the request thread.
+             queueSize=500 buffers up to 500 log events in memory.
+             discardingThreshold=0 means never silently drop events. -->
         <appender name="ASYNC_STDOUT" class="ch.qos.logback.classic.AsyncAppender">
             <appender-ref ref="STDOUT"/>
             <queueSize>500</queueSize>
