@@ -8,8 +8,8 @@ import com.production.app.exception.DuplicateResourceException;
 import com.production.app.exception.ResourceNotFoundException;
 import com.production.app.model.Product;
 import com.production.app.service.ProductService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -22,70 +22,26 @@ import java.util.List;
  * ============================================================
  * SERVICE IMPLEMENTATION — ProductServiceImpl
  * ============================================================
- *
- * This class contains all business logic for the Product domain.
- * It is the only class that should be aware of both DTOs and entities.
- *
- * TRANSACTION STRATEGY:
- *   @Transactional(readOnly = true) at the class level —
- *     all methods are read-only by default (optimizes read performance:
- *     Hibernate skips dirty-checking, DB may use read replicas).
- *
- *   @Transactional (write) at the method level for mutations —
- *     overrides the class-level annotation for create/update/delete.
- *
- * TRANSACTION PROPAGATION:
- *   Default propagation is REQUIRED — the method joins an existing
- *   transaction if one exists, or creates a new one if not.
- *   This is the correct default for service layer methods.
- *
- * EXCEPTION HANDLING:
- *   Service throws domain exceptions (ResourceNotFoundException,
- *   DuplicateResourceException). The GlobalExceptionHandler in the
- *   controller layer converts these to HTTP 404/409 responses.
- *   Services should NEVER set HTTP status codes directly.
- *
- * DEPENDENCY INJECTION:
- *   @RequiredArgsConstructor generates a constructor for all `final` fields.
- *   Constructor injection is preferred over @Autowired because:
- *   - Works with immutable (final) fields
- *   - Makes dependencies explicit and testable
- *   - Detects circular dependencies at startup, not at runtime
  */
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)   // Default: all reads optimized
-@Slf4j
 public class ProductServiceImpl implements ProductService {
 
-    /**
-     * The active DAO implementation — either JpaProductDAO or
-     * HibernateProductDAO depending on the active Spring profile.
-     * This class doesn't know (or care) which one is injected.
-     */
-    private final ProductDAO productDAO;
+    private static final Logger log = LoggerFactory.getLogger(ProductServiceImpl.class);
 
-    /**
-     * MapStruct-generated mapper bean — injected by Spring.
-     * Handles all entity ↔ DTO conversions cleanly.
-     */
+    private final ProductDAO productDAO;
     private final ProductMapper productMapper;
+
+    // Explicit constructor to initialize final fields (avoids Lombok dependency)
+    public ProductServiceImpl(ProductDAO productDAO, ProductMapper productMapper) {
+        this.productDAO = productDAO;
+        this.productMapper = productMapper;
+    }
 
     // ============================================================
     // CREATE
     // ============================================================
 
-    /**
-     * Create a new product with full business validation.
-     *
-     * BUSINESS RULES ENFORCED HERE:
-     *   1. SKU must be globally unique (checked before persist)
-     *   2. SKU is uppercased before storage for consistency
-     *
-     * @Transactional overrides the class-level readOnly=true.
-     * rollbackFor=Exception.class ensures ALL exceptions (including
-     * checked exceptions) trigger a rollback, not just RuntimeException.
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
@@ -190,19 +146,6 @@ public class ProductServiceImpl implements ProductService {
     // UPDATE
     // ============================================================
 
-    /**
-     * Full product update (PUT semantics — all fields replaced).
-     *
-     * PATTERN:
-     *   1. Fetch existing entity → validates existence
-     *   2. Apply DTO changes via MapStruct's updateEntityFromDTO
-     *      (null fields in DTO are ignored due to NullValuePropertyMappingStrategy)
-     *   3. Save the merged entity
-     *
-     * WHY NOT productDAO.save(productMapper.toEntity(dto))?
-     *   That would create a NEW entity object missing audit fields
-     *   (createdAt, updatedAt, active). Always load + merge.
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public ProductResponseDTO updateProduct(Long id, ProductRequestDTO requestDTO) {
@@ -234,12 +177,6 @@ public class ProductServiceImpl implements ProductService {
     // DELETE
     // ============================================================
 
-    /**
-     * Soft-delete: marks product as inactive.
-     * The record remains in the DB for audit and recovery purposes.
-     * Hard deletes should be performed only via scheduled batch jobs
-     * with compliance approval (GDPR right-to-erasure workflows).
-     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteProduct(Long id) {
