@@ -53,9 +53,9 @@ import java.util.List;
  *   - Detects circular dependencies at startup, not at runtime
  */
 @Service
-@Slf4j
 @RequiredArgsConstructor
 @Transactional(readOnly = true)   // Default: all reads optimized
+@Slf4j
 public class ProductServiceImpl implements ProductService {
 
     /**
